@@ -1,7 +1,12 @@
 const CONFIG = {
-  PASTA_MAE_ID: 'COLE_AQUI_O_ID_DA_PASTA_MAE',
+  TURMAS: {
+    'Turma 1': '1liKvrCmxEcJbFJbBb4UtfqcNAl_SIfmX',
+    'Turma 2': '1pf4reXpDzSAPkEN9dRJ1BlsFgRx0xNKj',
+    'Turma 3': '1_jdyvrocuzsrpSyDCzaMCzTkPt0_xsxf',
+  },
+  PASTA_REVISAR_ID: '17GwD6glRU4d666Jk2K7NRPqPGNBzOJei',
   CAMPO_NOME_ALUNO: 'Nome do aluno',
-  PASTA_REVISAR_ID: 'COLE_AQUI_O_ID_DA_PASTA_REVISAR',
+  CAMPO_TURMA: 'Turma',
   EMAIL_ALERTA: 'seu-email@dominio.com',
 };
 
@@ -14,18 +19,27 @@ function onFormSubmit(e) {
     return;
   }
 
-  const pastaAluno = encontrarPastaAluno(nomeAluno);
-  const pastaDestino = pastaAluno || DriveApp.getFolderById(CONFIG.PASTA_REVISAR_ID);
+  const turmaDeclarada = respostas[CONFIG.CAMPO_TURMA];
+  const encontradas = encontrarPastasAluno(nomeAluno, turmaDeclarada);
+
+  let pastaDestino;
+  let alerta = null;
+
+  if (encontradas.length === 1) {
+    pastaDestino = encontradas[0].pasta;
+  } else if (encontradas.length === 0) {
+    pastaDestino = DriveApp.getFolderById(CONFIG.PASTA_REVISAR_ID);
+    alerta = `Pasta nao encontrada para "${nomeAluno}"${turmaDeclarada ? ' em ' + turmaDeclarada : ''}. PDF salvo em _revisar.`;
+  } else {
+    pastaDestino = DriveApp.getFolderById(CONFIG.PASTA_REVISAR_ID);
+    const lista = encontradas.map((m) => m.turma).join(', ');
+    alerta = `Aluno "${nomeAluno}" encontrado em multiplas turmas (${lista}). PDF salvo em _revisar.`;
+  }
 
   const pdf = gerarPdfDaResposta(e, nomeAluno);
   pastaDestino.createFile(pdf);
 
-  if (!pastaAluno) {
-    notificarErro(
-      `Pasta nao encontrada para "${nomeAluno}". PDF salvo em _revisar.`,
-      respostas
-    );
-  }
+  if (alerta) notificarErro(alerta, respostas);
 }
 
 function mapearRespostas(e) {
@@ -36,14 +50,21 @@ function mapearRespostas(e) {
   return map;
 }
 
-function encontrarPastaAluno(nome) {
+function encontrarPastasAluno(nome, turmaDeclarada) {
   const alvo = normalizar(nome);
-  const pastas = DriveApp.getFolderById(CONFIG.PASTA_MAE_ID).getFolders();
-  while (pastas.hasNext()) {
-    const p = pastas.next();
-    if (normalizar(p.getName()) === alvo) return p;
-  }
-  return null;
+  const turmasParaBuscar = turmaDeclarada && CONFIG.TURMAS[turmaDeclarada]
+    ? { [turmaDeclarada]: CONFIG.TURMAS[turmaDeclarada] }
+    : CONFIG.TURMAS;
+
+  const achadas = [];
+  Object.entries(turmasParaBuscar).forEach(([turma, pastaId]) => {
+    const pastas = DriveApp.getFolderById(pastaId).getFolders();
+    while (pastas.hasNext()) {
+      const p = pastas.next();
+      if (normalizar(p.getName()) === alvo) achadas.push({ turma, pasta: p });
+    }
+  });
+  return achadas;
 }
 
 function normalizar(s) {
